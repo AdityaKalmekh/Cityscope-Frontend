@@ -2,22 +2,24 @@
 
 import React, { useState } from 'react';
 import { Eye, EyeOff, MapPin } from 'lucide-react';
+import useHttp from '@/hooks/useHttp';
+import { AuthResponse } from '@/types/auth.types';
+import { useRouter } from 'next/navigation';
 
 // Type definitions
 interface FormData {
   email: string;
   password: string;
 }
-
 interface AuthPageProps {
   onSubmit?: (data: FormData, isLogin: boolean) => void;
   onToggleMode?: (isLogin: boolean) => void;
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ 
-  onSubmit, 
   onToggleMode 
 }) => {
+  const router = useRouter();
   const [isLogin, setIsLogin] = useState<boolean>(false); // Start with signup as home page
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [formData, setFormData] = useState<FormData>({
@@ -26,6 +28,7 @@ const AuthPage: React.FC<AuthPageProps> = ({
   });
   const [errors, setErrors] = useState<Partial<FormData>>({});
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const { sendRequest } = useHttp<AuthResponse>();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const { name, value } = e.target;
@@ -73,10 +76,52 @@ const AuthPage: React.FC<AuthPageProps> = ({
     
     try {
       // Handle form submission logic here
-      if (onSubmit) {
-        await onSubmit(formData, isLogin);
-      } else {
-        console.log(isLogin ? 'Login' : 'Signup', formData);
+      // if (onSubmit) {
+      //   await onSubmit(formData, isLogin);
+      // } else {
+      //   console.log(isLogin ? 'Login' : 'Signup', formData);
+      // }
+
+      const response = await sendRequest(
+        {
+          url: '/api/auth',
+          method: 'POST',
+          data: {
+            email: formData.email,
+            password: formData.password
+          }
+        },
+        // Success callback
+        (data) => {
+          console.log('Auth successful:', data);
+          
+          if (data.success && data.data) {
+            // Store the token (you might want to use a proper auth context/state management)
+            localStorage.setItem('authToken', data.data.token);
+            localStorage.setItem('user', JSON.stringify(data.data.user));
+            
+            // Handle successful auth
+            if (data.data.isNewUser) {
+              console.log('New user created:', data.data.user);
+              router.push('/profile');
+              // Redirect to profile setup or dashboard
+            } else {
+              console.log('User logged in:', data.data.user);
+              router.push('/dashboard');
+              // Redirect to dashboard
+            }
+          }
+        },
+        // Error callback
+        (error) => {
+          console.error('Auth failed:', error.message);
+        }
+      );
+
+      // Additional handling if needed
+      if (response?.success) {
+        // Handle successful response
+        console.log(isLogin ? 'Login successful' : 'Signup successful');
       }
     } catch (error) {
       console.error('Auth error:', error);
