@@ -1,5 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import {
     Home,
     Plus,
@@ -14,7 +15,6 @@ import {
     User,
     Filter
 } from 'lucide-react';
-import Image from 'next/image';
 import useHttp from '@/hooks/useHttp';
 
 // TypeScript interfaces
@@ -79,17 +79,105 @@ interface PostTypeConfig {
     color: string;
 }
 
-interface DashboardState {
-    isModalOpen: boolean;
-    isSidebarOpen: boolean;
-    activeTab: 'home' | 'profile';
-    posts: Post[];
-    filterType: 'all' | 'recommend' | 'help' | 'update' | 'event';
-    locationFilter: string; // New location filter state
-    postForm: PostFormData;
-    userCity: string; // User's default city
-    isLoading: boolean;
-}
+// Smart Image Component that handles both external URLs and blob URLs
+const SmartImage: React.FC<{
+    src: string;
+    alt: string;
+    className?: string;
+    containerClassName?: string;
+    width?: number;
+    height?: number;
+}> = ({ src, alt, className = "", containerClassName = "relative h-64 w-full", width, height }) => {
+    const [imageError, setImageError] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Reset states when src changes
+    useEffect(() => {
+        setImageError(false);
+        setIsLoading(true);
+    }, [src]);
+
+    const handleLoad = () => {
+        setIsLoading(false);
+    };
+
+    const handleError = () => {
+        setIsLoading(false);
+        setImageError(true);
+    };
+
+    // Error fallback
+    if (imageError) {
+        return (
+            <div className={`${containerClassName} bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center`}>
+                <div className="text-center text-gray-500">
+                    <ImageIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Image not available</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Check if it's a blob URL (from file preview)
+    const isBlobUrl = src.startsWith('blob:') || src.startsWith('data:');
+
+    return (
+        <div className={`${containerClassName} bg-gray-100 rounded-lg overflow-hidden`}>
+            {/* Loading indicator */}
+            {isLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                </div>
+            )}
+            
+            <Image
+                src={src}
+                alt={alt}
+                fill={!width && !height}
+                width={width}
+                height={height}
+                className={`${className} object-contain transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                onLoad={handleLoad}
+                onError={handleError}
+                unoptimized={isBlobUrl} // Don't optimize blob URLs
+                priority={false}
+            />
+        </div>
+    );
+};
+
+// Client-side only time display to prevent hydration issues
+const ClientTimeDisplay: React.FC<{ date: Date }> = ({ date }) => {
+    const [timeString, setTimeString] = useState('');
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        
+        const updateTime = () => {
+            const now = new Date();
+            const diff = now.getTime() - new Date(date).getTime();
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+
+            if (days > 0) setTimeString(`${days}d`);
+            else if (hours > 0) setTimeString(`${hours}h`);
+            else if (minutes > 0) setTimeString(`${minutes}m`);
+            else setTimeString('now');
+        };
+
+        if (mounted) {
+            updateTime();
+            const interval = setInterval(updateTime, 60000);
+            return () => clearInterval(interval);
+        }
+    }, [date, mounted]);
+
+    if (!mounted) return <span>...</span>;
+    return <span>{timeString}</span>;
+};
 
 const Dashboard: React.FC = () => {
     const feedHttp = useHttp<ApiResponse<PostsFeedResponse>>();
@@ -100,39 +188,26 @@ const Dashboard: React.FC = () => {
     // Available cities
     const availableCities: string[] = ['Ahmedabad', 'Mumbai', 'Pune', 'Surat'];
 
-    // State with proper typing
-    const [state, setState] = useState<DashboardState>({
-        isModalOpen: false,
-        isSidebarOpen: false,
-        activeTab: 'home',
-        posts: [],
-        filterType: 'all',
-        locationFilter: '', // Will be set to user's city initially
-        postForm: {
-            content: '',
-            postType: 'recommend',
-            city: 'Surat', // Default city
-            image: null,
-            imagePreview: ''
-        },
-        userCity: 'Surat', // Default, will be updated from user profile
-        isLoading: true
+    // State
+    const [mounted, setMounted] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<'home' | 'profile'>('home');
+    const [posts, setPosts] = useState<Post[]>([]);
+    const [filterType, setFilterType] = useState<'all' | 'recommend' | 'help' | 'update' | 'event'>('all');
+    const [locationFilter, setLocationFilter] = useState('');
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [userCity, _setUserCity] = useState('Surat');
+    const [isLoading, setIsLoading] = useState(false);
+    const [postForm, setPostForm] = useState<PostFormData>({
+        content: '',
+        postType: 'recommend',
+        city: 'Surat',
+        image: null,
+        imagePreview: ''
     });
 
-    // Destructure state for easier access
-    const {
-        isModalOpen,
-        isSidebarOpen,
-        activeTab,
-        posts,
-        filterType,
-        locationFilter,
-        postForm,
-        userCity,
-        isLoading
-    } = state;
-
-    // Post type configurations with proper typing
+    // Post type configurations
     const postTypes: PostTypeConfig[] = [
         { value: 'recommend', label: '📍 Recommend a place', color: 'bg-green-100 text-green-800' },
         { value: 'help', label: '🆘 Ask for help', color: 'bg-orange-100 text-orange-800' },
@@ -140,72 +215,55 @@ const Dashboard: React.FC = () => {
         { value: 'event', label: '🎉 Event announcement', color: 'bg-purple-100 text-purple-800' }
     ];
 
-    // Update state helper function
-    const updateState = (updates: Partial<DashboardState>): void => {
-        setState(prevState => ({ ...prevState, ...updates }));
-    };
-
-    // Update post form helper function
-    const updatePostForm = (updates: Partial<PostFormData>): void => {
-        updateState({
-            postForm: { ...postForm, ...updates }
-        });
-    };
-
-    // Fetch user's feed based on their city and filters
-    const fetchFeed = async (): Promise<void> => {
-        try {
-            updateState({ isLoading: true });
-
-            // Build query parameters
-            const queryParams = new URLSearchParams();
-            
-            // Add post type filter
-            if (filterType !== 'all') {
-                queryParams.append('postType', filterType);
-            }
-            
-            // Add location filter (if different from user's default city)
-            if (locationFilter && locationFilter !== userCity) {
-                queryParams.append('city', locationFilter);
-            }
-
-            // Always sort by newest
-            queryParams.append('sortBy', 'newest');
-
-            const endpoint = `/api/posts/feed${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-
-            await feedHttp.sendRequest(
-                {
-                    url: endpoint,
-                    method: 'GET'
-                },
-                (data) => {
-                    if (data?.success && data?.data?.posts) {
-                        updateState({ 
-                            posts: data.data.posts,
-                            isLoading: false 
-                        });
-                    }
-                },
-                (error) => {
-                    console.error('Failed to fetch feed:', error.message);
-                    updateState({ isLoading: false });
-                }
-            );
-        } catch (error) {
-            console.error('Error fetching feed:', error);
-            updateState({ isLoading: false });
-        }
-    };
-
-    // Initial load - fetch user's city feed
+    // Handle mounting to prevent hydration issues
     useEffect(() => {
-        fetchFeed();
-    }, [filterType, locationFilter]);
+        const timer = setTimeout(() => setMounted(true), 100);
+        return () => clearTimeout(timer);
+    }, []);
 
-    // Handle post creation with API Call
-    const handleCreatePost = async (): Promise<void> => {
+        // Effects - fetch posts when filters change
+    useEffect(() => {
+        const fetchFeed = async () => {
+            if (!mounted) return;
+
+            try {
+                setIsLoading(true);
+                const queryParams = new URLSearchParams();
+                
+                if (filterType !== 'all') queryParams.append('postType', filterType);
+                if (locationFilter && locationFilter !== userCity) queryParams.append('city', locationFilter);
+                queryParams.append('sortBy', 'newest');
+
+                const endpoint = `/api/posts/feed${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+
+                await feedHttp.sendRequest(
+                    { url: endpoint, method: 'GET' },
+                    (data) => {
+                        if (data?.success && data?.data?.posts) {
+                            setPosts(data.data.posts);
+                        }
+                        setIsLoading(false);
+                    },
+                    (error) => {
+                        console.error('Failed to fetch feed:', error);
+                        setIsLoading(false);
+                    }
+                );
+            } catch (error) {
+                console.error('Error fetching feed:', error);
+                setIsLoading(false);
+            }
+        };
+
+        if (mounted) {
+            fetchFeed();
+        }
+        // feedHttp is intentionally not included in dependencies to prevent infinite re-renders
+        // eslint-disable-next-line react-hooks/exhaustive-deps  
+    }, [mounted, filterType, locationFilter, userCity]); // Don't include feedHttp to prevent infinite renders
+
+    // Handle post creation
+    const handleCreatePost = async () => {
         if (!postForm.content.trim()) return;
 
         try {
@@ -213,41 +271,29 @@ const Dashboard: React.FC = () => {
             formData.append('content', postForm.content.trim());
             formData.append('postType', postForm.postType);
             formData.append('city', postForm.city);
-
-            // Add image file if selected
-            if (postForm.image) {
-                formData.append('image', postForm.image);
-            }
+            if (postForm.image) formData.append('image', postForm.image);
 
             await createPostHttp.sendRequest(
-                {
-                    url: '/api/posts',
-                    method: 'POST',
-                    data: formData,
-                },
+                { url: '/api/posts', method: 'POST', data: formData },
                 (data) => {
                     if (data?.success && data?.data?.post) {
-                        // Add the new post to the beginning of the posts array
-                        updateState({
-                            posts: [data.data.post, ...posts],
-                            postForm: {
-                                content: '',
-                                postType: 'recommend',
-                                city: userCity, // Reset to user's city
-                                image: null,
-                                imagePreview: ''
-                            },
-                            isModalOpen: false
+                        setPosts(prev => [data.data!.post, ...prev]);
+                        setPostForm({
+                            content: '',
+                            postType: 'recommend',
+                            city: userCity,
+                            image: null,
+                            imagePreview: ''
                         });
+                        setIsModalOpen(false);
 
-                        // Clean up preview URL
                         if (postForm.imagePreview) {
                             URL.revokeObjectURL(postForm.imagePreview);
                         }
                     }
                 },
                 (error) => {
-                    console.error('Failed to create post:', error.message);
+                    console.error('Failed to create post:', error);
                     alert('Failed to create post: ' + error.message);
                 }
             );
@@ -257,28 +303,17 @@ const Dashboard: React.FC = () => {
         }
     };
 
-    // Handle like toggle
-    const toggleLike = async (postId: string): Promise<void> => {
+    // Handle like/dislike
+    const handleLike = async (postId: string) => {
         try {
             await toggleLikeHttp.sendRequest(
-                {
-                    url: `/api/posts/${postId}/like`,
-                    method: 'POST'
-                },
+                { url: `/api/posts/${postId}/like`, method: 'POST' },
                 (data) => {
                     if (data?.success && data?.data?.post) {
-                        // Update the specific post in the posts array
-                        const updatedPosts = posts.map((post: Post) => {
-                            if (post._id === postId) {
-                                return data.data!.post;
-                            }
-                            return post;
-                        });
-                        updateState({ posts: updatedPosts });
+                        setPosts(prev => prev.map(post => 
+                            post._id === postId ? data.data!.post : post
+                        ));
                     }
-                },
-                (error) => {
-                    console.error('Failed to toggle like:', error.message);
                 }
             );
         } catch (error) {
@@ -286,28 +321,16 @@ const Dashboard: React.FC = () => {
         }
     };
 
-    // Handle dislike toggle
-    const toggleDislike = async (postId: string): Promise<void> => {
+    const handleDislike = async (postId: string) => {
         try {
             await toggleDislikeHttp.sendRequest(
-                {
-                    url: `/api/posts/${postId}/dislike`,
-                    method: 'POST'
-                },
+                { url: `/api/posts/${postId}/dislike`, method: 'POST' },
                 (data) => {
                     if (data?.success && data?.data?.post) {
-                        // Update the specific post in the posts array
-                        const updatedPosts = posts.map((post: Post) => {
-                            if (post._id === postId) {
-                                return data.data!.post;
-                            }
-                            return post;
-                        });
-                        updateState({ posts: updatedPosts });
+                        setPosts(prev => prev.map(post => 
+                            post._id === postId ? data.data!.post : post
+                        ));
                     }
-                },
-                (error) => {
-                    console.error('Failed to toggle dislike:', error.message);
                 }
             );
         } catch (error) {
@@ -315,110 +338,50 @@ const Dashboard: React.FC = () => {
         }
     };
 
-    // Get post type configuration
-    const getPostTypeConfig = (type: Post['postType']): PostTypeConfig => {
-        return postTypes.find((pt: PostTypeConfig) => pt.value === type) || postTypes[0];
-    };
-
-    // Format time ago utility
-    const formatTimeAgo = (date: Date): string => {
-        const now = new Date();
-        const diff = now.getTime() - new Date(date).getTime();
-        const minutes = Math.floor(diff / 60000);
-        const hours = Math.floor(diff / 3600000);
-        const days = Math.floor(diff / 86400000);
-
-        if (days > 0) return `${days}d`;
-        if (hours > 0) return `${hours}h`;
-        if (minutes > 0) return `${minutes}m`;
-        return 'now';
-    };
-
-    // Handle input changes
-    const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
-        updatePostForm({ content: e.target.value });
-    };
-
-    const handlePostTypeChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
-        updatePostForm({ postType: e.target.value as PostFormData['postType'] });
-    };
-
-    const handlePostCityChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
-        updatePostForm({ city: e.target.value });
-    };
-
-    const handleLocationFilterChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
-        updateState({ locationFilter: e.target.value });
-    };
-
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    // Handle image upload
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            // Validate file type
             const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
             if (!validTypes.includes(file.type)) {
                 alert('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
                 return;
             }
 
-            // Validate file size (max 5MB)
-            const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+            const maxSize = 5 * 1024 * 1024;
             if (file.size > maxSize) {
                 alert('Please select an image smaller than 5MB');
                 return;
             }
 
-            // Create preview URL
             const previewUrl = URL.createObjectURL(file);
-            updatePostForm({
-                image: file,
-                imagePreview: previewUrl
-            });
-        } else {
-            updatePostForm({
-                image: null,
-                imagePreview: ''
-            });
+            setPostForm(prev => ({ ...prev, image: file, imagePreview: previewUrl }));
         }
     };
 
-    const handleRemoveImage = (): void => {
-        // Clean up the preview URL to prevent memory leaks
+    const handleRemoveImage = () => {
         if (postForm.imagePreview) {
             URL.revokeObjectURL(postForm.imagePreview);
         }
-        updatePostForm({
-            image: null,
-            imagePreview: ''
-        });
+        setPostForm(prev => ({ ...prev, image: null, imagePreview: '' }));
     };
 
-    // Event handlers with proper typing
-    const handleSidebarToggle = (): void => {
-        updateState({ isSidebarOpen: !isSidebarOpen });
+    // Helper functions
+    const getPostTypeConfig = (type: Post['postType']) => {
+        return postTypes.find(pt => pt.value === type) || postTypes[0];
     };
 
-    const handleModalToggle = (): void => {
-        // Set user's city as default for new posts
-        updateState({ 
-            isModalOpen: !isModalOpen,
-            postForm: {
-                ...postForm,
-                city: userCity
-            }
-        });
-    };
-
-    const handleFilterChange = (newFilter: DashboardState['filterType']): void => {
-        updateState({ filterType: newFilter });
-    };
-
-    const handleTabChange = (tab: DashboardState['activeTab']): void => {
-        updateState({
-            activeTab: tab,
-            isSidebarOpen: false
-        });
-    };
+    // Don't render until mounted to prevent hydration issues
+    if (!mounted) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading Cityscope...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 flex">
@@ -426,15 +389,15 @@ const Dashboard: React.FC = () => {
             {isSidebarOpen && (
                 <div
                     className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-                    onClick={() => updateState({ isSidebarOpen: false })}
+                    onClick={() => setIsSidebarOpen(false)}
                 />
             )}
 
             {/* Sidebar */}
-            <div className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-                }`}>
+            <div className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out ${
+                isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+            }`}>
                 <div className="flex flex-col h-full">
-                    {/* Logo */}
                     <div className="flex items-center justify-between p-6 border-b">
                         <div className="flex items-center space-x-3">
                             <div className="bg-indigo-600 p-2 rounded-lg">
@@ -443,7 +406,7 @@ const Dashboard: React.FC = () => {
                             <h1 className="text-xl font-bold text-gray-900">Cityscope</h1>
                         </div>
                         <button
-                            onClick={() => updateState({ isSidebarOpen: false })}
+                            onClick={() => setIsSidebarOpen(false)}
                             className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
                             type="button"
                         >
@@ -451,14 +414,14 @@ const Dashboard: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* Navigation */}
                     <nav className="flex-1 px-4 py-6 space-y-2">
                         <button
-                            onClick={() => handleTabChange('home')}
-                            className={`w-full flex items-center space-x-3 px-4 py-3 text-left rounded-lg transition-colors ${activeTab === 'home'
-                                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                : 'text-gray-700 hover:bg-gray-100'
-                                }`}
+                            onClick={() => { setActiveTab('home'); setIsSidebarOpen(false); }}
+                            className={`w-full flex items-center space-x-3 px-4 py-3 text-left rounded-lg transition-colors ${
+                                activeTab === 'home'
+                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                    : 'text-gray-700 hover:bg-gray-100'
+                            }`}
                             type="button"
                         >
                             <Home className="w-5 h-5" />
@@ -466,9 +429,7 @@ const Dashboard: React.FC = () => {
                         </button>
 
                         <button
-                            onClick={() => {
-                                updateState({ isModalOpen: true, isSidebarOpen: false });
-                            }}
+                            onClick={() => { setIsModalOpen(true); setIsSidebarOpen(false); }}
                             className="w-full flex items-center space-x-3 px-4 py-3 text-left rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
                             type="button"
                         >
@@ -477,7 +438,6 @@ const Dashboard: React.FC = () => {
                         </button>
                     </nav>
 
-                    {/* User Profile */}
                     <div className="p-4 border-t">
                         <div className="flex items-center space-x-3">
                             <div className="bg-gray-200 p-2 rounded-full">
@@ -497,7 +457,7 @@ const Dashboard: React.FC = () => {
                 {/* Mobile Header */}
                 <div className="lg:hidden bg-white shadow-sm p-4 flex items-center justify-between">
                     <button
-                        onClick={handleSidebarToggle}
+                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                         className="p-2 rounded-lg hover:bg-gray-100"
                         type="button"
                     >
@@ -505,7 +465,7 @@ const Dashboard: React.FC = () => {
                     </button>
                     <h1 className="font-bold text-gray-900">Cityscope</h1>
                     <button
-                        onClick={handleModalToggle}
+                        onClick={() => setIsModalOpen(true)}
                         className="bg-indigo-600 p-2 rounded-lg text-white hover:bg-indigo-700"
                         type="button"
                     >
@@ -526,7 +486,7 @@ const Dashboard: React.FC = () => {
                                 )}
                             </h2>
                             <button
-                                onClick={handleModalToggle}
+                                onClick={() => setIsModalOpen(true)}
                                 className="hidden lg:flex items-center space-x-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
                                 type="button"
                             >
@@ -535,7 +495,6 @@ const Dashboard: React.FC = () => {
                             </button>
                         </div>
 
-                        {/* Filters Row */}
                         <div className="space-y-3">
                             {/* Location Filter */}
                             <div className="flex items-center space-x-3">
@@ -545,14 +504,12 @@ const Dashboard: React.FC = () => {
                                 </div>
                                 <select
                                     value={locationFilter}
-                                    onChange={handleLocationFilterChange}
+                                    onChange={(e) => setLocationFilter(e.target.value)}
                                     className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                 >
                                     <option value="">My City ({userCity})</option>
-                                    {availableCities.filter(city => city !== userCity).map((city: string) => (
-                                        <option key={city} value={city}>
-                                            {city}
-                                        </option>
+                                    {availableCities.filter(city => city !== userCity).map(city => (
+                                        <option key={city} value={city}>{city}</option>
                                     ))}
                                 </select>
                             </div>
@@ -560,23 +517,25 @@ const Dashboard: React.FC = () => {
                             {/* Post Type Filter Tabs */}
                             <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg overflow-x-auto">
                                 <button
-                                    onClick={() => handleFilterChange('all')}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${filterType === 'all'
-                                        ? 'bg-white text-gray-900 shadow-sm'
-                                        : 'text-gray-600 hover:text-gray-900'
-                                        }`}
+                                    onClick={() => setFilterType('all')}
+                                    className={`px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${
+                                        filterType === 'all'
+                                            ? 'bg-white text-gray-900 shadow-sm'
+                                            : 'text-gray-600 hover:text-gray-900'
+                                    }`}
                                     type="button"
                                 >
                                     All Posts
                                 </button>
-                                {postTypes.map((type: PostTypeConfig) => (
+                                {postTypes.map(type => (
                                     <button
                                         key={type.value}
-                                        onClick={() => handleFilterChange(type.value)}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${filterType === type.value
-                                            ? 'bg-white text-gray-900 shadow-sm'
-                                            : 'text-gray-600 hover:text-gray-900'
-                                            }`}
+                                        onClick={() => setFilterType(type.value)}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${
+                                            filterType === type.value
+                                                ? 'bg-white text-gray-900 shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                        }`}
                                         type="button"
                                     >
                                         {type.label.split(' ').slice(1).join(' ')}
@@ -599,14 +558,13 @@ const Dashboard: React.FC = () => {
                         )}
 
                         {/* Posts */}
-                        {!isLoading && posts.map((post: Post) => {
+                        {!isLoading && posts.map(post => {
                             const typeConfig = getPostTypeConfig(post.postType);
                             const isLiked = post.likes.includes('currentUser');
                             const isDisliked = post.dislikes.includes('currentUser');
 
                             return (
                                 <div key={post._id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                                    {/* Post Header */}
                                     <div className="p-4 lg:p-6">
                                         <div className="flex items-start justify-between mb-4">
                                             <div className="flex items-center space-x-3">
@@ -625,7 +583,7 @@ const Dashboard: React.FC = () => {
                                                         )}
                                                     </div>
                                                     <div className="flex items-center space-x-2 text-sm text-gray-500">
-                                                        <span>{formatTimeAgo(post.createdAt)}</span>
+                                                        <ClientTimeDisplay date={post.createdAt} />
                                                         <span>•</span>
                                                         <div className="flex items-center space-x-1">
                                                             <MapPin className="w-3 h-3" />
@@ -639,29 +597,27 @@ const Dashboard: React.FC = () => {
                                             </span>
                                         </div>
 
-                                        {/* Post Content */}
                                         <p className="text-gray-900 mb-4 leading-relaxed">{post.content}</p>
 
-                                        {/* Post Image */}
                                         {post.image && (
-                                            <div className="mb-4 rounded-lg overflow-hidden">
-                                                <img
-                                                    src={post.image}
+                                            <div className="mb-4">
+                                                <SmartImage 
+                                                    src={post.image} 
                                                     alt="Post image"
-                                                    className="w-full h-64 object-cover"
+                                                    containerClassName="relative h-64 w-full"
                                                 />
                                             </div>
                                         )}
 
-                                        {/* Post Actions */}
                                         <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                                             <div className="flex items-center space-x-6">
                                                 <button
-                                                    onClick={() => toggleLike(post._id)}
-                                                    className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${isLiked
-                                                        ? 'bg-red-50 text-red-600'
-                                                        : 'text-gray-600 hover:bg-gray-50'
-                                                        }`}
+                                                    onClick={() => handleLike(post._id)}
+                                                    className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
+                                                        isLiked
+                                                            ? 'bg-red-50 text-red-600'
+                                                            : 'text-gray-600 hover:bg-gray-50'
+                                                    }`}
                                                     type="button"
                                                 >
                                                     <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
@@ -669,18 +625,19 @@ const Dashboard: React.FC = () => {
                                                 </button>
 
                                                 <button
-                                                    onClick={() => toggleDislike(post._id)}
-                                                    className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${isDisliked
-                                                        ? 'bg-gray-100 text-gray-700'
-                                                        : 'text-gray-600 hover:bg-gray-50'
-                                                        }`}
+                                                    onClick={() => handleDislike(post._id)}
+                                                    className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
+                                                        isDisliked
+                                                            ? 'bg-gray-100 text-gray-700'
+                                                            : 'text-gray-600 hover:bg-gray-50'
+                                                    }`}
                                                     type="button"
                                                 >
                                                     <ThumbsDown className={`w-5 h-5 ${isDisliked ? 'fill-current' : ''}`} />
                                                     <span className="text-sm font-medium">{post.dislikes.length}</span>
                                                 </button>
 
-                                                <button
+                                                <button 
                                                     className="flex items-center space-x-2 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
                                                     type="button"
                                                 >
@@ -690,10 +647,9 @@ const Dashboard: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        {/* Replies */}
                                         {post.replies.length > 0 && (
                                             <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
-                                                {post.replies.map((reply: Reply) => (
+                                                {post.replies.map(reply => (
                                                     <div key={reply._id} className="flex space-x-3">
                                                         <div className="bg-gray-200 p-1.5 rounded-full">
                                                             <User className="w-4 h-4 text-gray-600" />
@@ -705,7 +661,7 @@ const Dashboard: React.FC = () => {
                                                                         {reply.author.firstName} {reply.author.lastName}
                                                                     </span>
                                                                     <span className="text-xs text-gray-500">
-                                                                        {formatTimeAgo(reply.createdAt)}
+                                                                        <ClientTimeDisplay date={reply.createdAt} />
                                                                     </span>
                                                                 </div>
                                                                 <p className="text-sm text-gray-700">{reply.content}</p>
@@ -731,7 +687,7 @@ const Dashboard: React.FC = () => {
                                 </h3>
                                 <p className="text-gray-500 mb-4">Be the first to share something with your community!</p>
                                 <button
-                                    onClick={handleModalToggle}
+                                    onClick={() => setIsModalOpen(true)}
                                     className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
                                     type="button"
                                 >
@@ -748,11 +704,10 @@ const Dashboard: React.FC = () => {
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <div className="p-6">
-                            {/* Modal Header */}
                             <div className="flex items-center justify-between mb-6">
                                 <h2 className="text-xl font-bold text-gray-900">Create New Post</h2>
                                 <button
-                                    onClick={() => updateState({ isModalOpen: false })}
+                                    onClick={() => setIsModalOpen(false)}
                                     className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
                                     type="button"
                                 >
@@ -760,16 +715,14 @@ const Dashboard: React.FC = () => {
                                 </button>
                             </div>
 
-                            {/* Form */}
                             <div className="space-y-4">
-                                {/* Content */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                         What&apos;s happening in your neighborhood?
                                     </label>
                                     <textarea
                                         value={postForm.content}
-                                        onChange={handleContentChange}
+                                        onChange={(e) => setPostForm(prev => ({ ...prev, content: e.target.value }))}
                                         placeholder="Share your thoughts, recommendations, or ask for help..."
                                         className="w-full h-32 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
                                         maxLength={280}
@@ -779,49 +732,37 @@ const Dashboard: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Post Type */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Post Type
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Post Type</label>
                                     <select
                                         value={postForm.postType}
-                                        onChange={handlePostTypeChange}
+                                        onChange={(e) => setPostForm(prev => ({ ...prev, postType: e.target.value as PostFormData['postType'] }))}
                                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                     >
-                                        {postTypes.map((type: PostTypeConfig) => (
-                                            <option key={type.value} value={type.value}>
-                                                {type.label}
-                                            </option>
+                                        {postTypes.map(type => (
+                                            <option key={type.value} value={type.value}>{type.label}</option>
                                         ))}
                                     </select>
                                 </div>
 
-                                {/* City */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        City
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
                                     <select
                                         value={postForm.city}
-                                        onChange={handlePostCityChange}
+                                        onChange={(e) => setPostForm(prev => ({ ...prev, city: e.target.value }))}
                                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                     >
-                                        {availableCities.map((city: string) => (
-                                            <option key={city} value={city}>
-                                                {city}
-                                            </option>
+                                        {availableCities.map(city => (
+                                            <option key={city} value={city}>{city}</option>
                                         ))}
                                     </select>
                                 </div>
 
-                                {/* Image Upload */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                         Upload Image (Optional)
                                     </label>
                                     <div className="space-y-3">
-                                        {/* File Input */}
                                         <div className="relative">
                                             <input
                                                 type="file"
@@ -843,25 +784,23 @@ const Dashboard: React.FC = () => {
                                             </label>
                                         </div>
 
-                                        {/* Image Preview */}
                                         {postForm.imagePreview && (
                                             <div className="relative">
-                                                <img
-                                                    src={postForm.imagePreview}
+                                                <SmartImage 
+                                                    src={postForm.imagePreview} 
                                                     alt="Preview"
-                                                    className="w-full h-40 object-cover rounded-lg border border-gray-200"
+                                                    containerClassName="relative h-40 w-full"
                                                 />
                                                 <button
                                                     type="button"
                                                     onClick={handleRemoveImage}
-                                                    className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition-colors"
+                                                    className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition-colors z-10"
                                                 >
                                                     <X className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         )}
 
-                                        {/* File Info */}
                                         {postForm.image && (
                                             <div className="text-sm text-gray-500">
                                                 <p>File: {postForm.image.name}</p>
@@ -872,10 +811,9 @@ const Dashboard: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Modal Actions */}
                             <div className="flex space-x-3 mt-6">
                                 <button
-                                    onClick={() => updateState({ isModalOpen: false })}
+                                    onClick={() => setIsModalOpen(false)}
                                     className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                                     type="button"
                                 >

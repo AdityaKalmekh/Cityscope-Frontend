@@ -3,13 +3,13 @@ import axios, { AxiosRequestConfig, AxiosResponse, CancelTokenSource } from 'axi
 
 // Create an axios instance with default config
 const axiosInstance = axios.create({
-  baseURL: 'http://localhost:5000/cityscope',
+  baseURL: `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}`,
   withCredentials: true, // Equivalent to credentials: 'include'
   headers: {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
   }
-});
+}); 
 
 axiosInstance.interceptors.request.use(request => {
   console.log('🚀 API Request:', request.baseURL);
