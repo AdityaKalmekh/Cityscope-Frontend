@@ -5,6 +5,7 @@ import { Eye, EyeOff, MapPin } from 'lucide-react';
 import useHttp from '@/hooks/useHttp';
 import { AuthResponse } from '@/types/auth.types';
 import { useRouter } from 'next/navigation';
+import Cookies from 'js-cookie';
 
 // Type definitions
 interface FormData {
@@ -16,8 +17,16 @@ interface AuthPageProps {
   onToggleMode?: (isLogin: boolean) => void;
 }
 
-const AuthPage: React.FC<AuthPageProps> = ({ 
-  onToggleMode 
+const AUTH_COOKIE = 'Auth_Token';
+const AUTH_COOKIE_OPTIONS: Cookies.CookieAttributes = {
+    expires: new Date(Date.now() + 60 * 60 * 1000),
+    secure: process.env.NODE_ENV === 'production', // Use secure in production
+    sameSite: 'Strict',
+    path: '/'
+};
+
+const AuthPage: React.FC<AuthPageProps> = ({
+  onToggleMode
 }) => {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState<boolean>(false); // Start with signup as home page
@@ -36,7 +45,7 @@ const AuthPage: React.FC<AuthPageProps> = ({
       ...prevData,
       [name]: value
     }));
-    
+
     // Clear error when user starts typing
     if (errors[name as keyof FormData]) {
       setErrors(prevErrors => ({
@@ -48,32 +57,32 @@ const AuthPage: React.FC<AuthPageProps> = ({
 
   const validateForm = (): boolean => {
     const newErrors: Partial<FormData> = {};
-    
+
     if (!formData.email.trim()) {
       newErrors.email = 'Email is required';
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address';
     }
-    
+
     if (!formData.password.trim()) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 6) {
       newErrors.password = 'Password must be at least 6 characters';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.MouseEvent<HTMLButtonElement>): Promise<void> => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     try {
       // Handle form submission logic here
       // if (onSubmit) {
@@ -94,12 +103,10 @@ const AuthPage: React.FC<AuthPageProps> = ({
         // Success callback
         (data) => {
           console.log('Auth successful:', data);
-          
+
           if (data.success && data.data) {
-            // Store the token (you might want to use a proper auth context/state management)
-            localStorage.setItem('authToken', data.data.token);
-            localStorage.setItem('user', JSON.stringify(data.data.user));
-            
+            Cookies.set(AUTH_COOKIE, data.data.token, AUTH_COOKIE_OPTIONS);
+
             // Handle successful auth
             if (data.data.isNewUser) {
               console.log('New user created:', data.data.user);
@@ -135,7 +142,7 @@ const AuthPage: React.FC<AuthPageProps> = ({
     setIsLogin(newIsLogin);
     setFormData({ email: '', password: '' });
     setErrors({});
-    
+
     if (onToggleMode) {
       onToggleMode(newIsLogin);
     }
@@ -155,8 +162,8 @@ const AuthPage: React.FC<AuthPageProps> = ({
             {isLogin ? 'Welcome Back' : 'Join Cityscope'}
           </h1>
           <p className="text-gray-600 text-sm">
-            {isLogin 
-              ? 'Connect with your local community' 
+            {isLogin
+              ? 'Connect with your local community'
               : 'Connect with your neighborhood'}
           </p>
         </div>
@@ -175,9 +182,8 @@ const AuthPage: React.FC<AuthPageProps> = ({
               required
               value={formData.email}
               onChange={handleInputChange}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors ${
-                errors.email ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors ${errors.email ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder="Enter your email"
             />
             {errors.email && (
@@ -198,9 +204,8 @@ const AuthPage: React.FC<AuthPageProps> = ({
                 required
                 value={formData.password}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors pr-12 ${
-                  errors.password ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors pr-12 ${errors.password ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 placeholder="Enter your password"
               />
               <button
@@ -221,14 +226,13 @@ const AuthPage: React.FC<AuthPageProps> = ({
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className={`w-full py-3 px-4 rounded-lg font-medium transition-colors focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 ${
-              isSubmitting 
-                ? 'bg-gray-400 cursor-not-allowed' 
+            className={`w-full py-3 px-4 rounded-lg font-medium transition-colors focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 ${isSubmitting
+                ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-gray-900 hover:bg-gray-800 text-white'
-            }`}
+              }`}
           >
-            {isSubmitting 
-              ? 'Please wait...' 
+            {isSubmitting
+              ? 'Please wait...'
               : (isLogin ? 'Sign In' : 'Create Account')
             }
           </button>
