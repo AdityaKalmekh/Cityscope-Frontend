@@ -317,32 +317,6 @@ const ProfileCompletion = () => {
             )}
           </button>
         </div>
-
-        {/* Skip Option */}
-        {/* <div className="mt-4 sm:mt-6 text-center">
-          <button
-            type="button"
-            onClick={handleSkip}
-            className="text-sm text-gray-600 hover:text-gray-800 transition-colors"
-            disabled={isSubmitting}
-          >
-            Skip for now
-          </button>
-        </div> */}
-
-        {/* Progress Indicator */}
-        {/* <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-100">
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>Profile Completion</span>
-            <span>{isFormValid ? '100%' : '0%'}</span>
-          </div>
-          <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
-            <div
-              className={`h-2 rounded-full transition-all duration-300 ${isFormValid ? 'bg-green-500 w-full' : 'bg-indigo-600 w-0'
-                }`}
-            ></div>
-          </div>
-        </div> */}
       </div>
     </div>
   );
